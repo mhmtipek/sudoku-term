@@ -1,8 +1,12 @@
+#![allow(non_snake_case)]
+
 use std::io;
+use std::fmt;
 use clap::Parser;
 use ratatui::{
     crossterm::event::{self, KeyCode, KeyEventKind},
     style::Stylize,
+    text::{Line, Text},
     widgets::Paragraph,
     DefaultTerminal,
 };
@@ -19,24 +23,28 @@ struct Args {
     showElapsedTime: bool,
 }
 
-fn main() { // -> io::Result<()> {
-//    let mut terminal = ratatui::init();
-//    terminal.clear()?;
+fn main() -> io::Result<()> {
+    let mut terminal = ratatui::init();
+    terminal.clear()?;
 
     let args = Args::parse();
 
     print!("Difficulty: {}\n", args.difficulty);
     print!("showElapsedTime: {}\n", args.showElapsedTime);
 
-//    let app_result = run(terminal);
+    let app_result = run(terminal, args.difficulty, args.showElapsedTime);
     ratatui::restore();
-//    app_result
+    app_result
 }
 
-fn run(mut terminal: DefaultTerminal) -> io::Result<()> {
+fn run(mut terminal: DefaultTerminal, difficulty: u8, showElapsedTime: bool) -> io::Result<()> {
     loop {
         terminal.draw(|frame| {
-            let greeting = Paragraph::new("Hello Ratatui! (press 'q' to quit)")
+            let greetingText = Text::from(vec![
+                Line::from(vec![ format!("Difficulty: {}", difficulty).into() ]),
+                Line::from(vec![ format!("Show Elapsed Time: {}", showElapsedTime).yellow() ]),
+            ]);
+            let greeting = Paragraph::new(greetingText)
                 .white()
                 .on_blue();
             frame.render_widget(greeting, frame.area());
