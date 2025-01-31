@@ -1,13 +1,13 @@
 #![allow(non_snake_case)]
 
 use std::io;
-use std::fmt;
+//use std::fmt;
 use clap::Parser;
 use ratatui::{
     crossterm::event::{self, KeyCode, KeyEventKind},
-    style::Stylize,
-    text::{Line, Text},
-    widgets::Paragraph,
+    style::{Color, Style, Stylize},
+    text::Text,
+    widgets::{Cell, Row, Table, TableState},
     DefaultTerminal,
 };
 
@@ -17,20 +17,86 @@ struct Args {
     /// Difficulty
     #[arg(short, long, default_value_t = 4)]
     difficulty: u8,
-        
+
     /// Show elapsed time
     #[arg(short, long)]
     showElapsedTime: bool,
 }
 
-fn main() -> io::Result<()> {
-    let mut terminal = ratatui::init();
-    terminal.clear()?;
+struct Board<'a> {
+    table: Table<'a>,
+    table_state: TableState,
+    current_cell: (u8, u8),
+    difficulty: u8,
+}
 
+impl<'a> Board<'a> {
+    fn new(difficulty: u8) -> Self {
+        let mut rows: Vec<Row> = Vec::with_capacity(9);
+        for row in 0..9 {
+            let mut cells: Vec<Cell> = Vec::with_capacity(9);
+            for col in 0..9 {
+                let bg_color = {
+                    let is_cell_darker = (row % 2) ^ (col % 2) == 0;
+                    let is_rect_darker = ((row / 3) % 2) ^ ((col / 3) % 2) == 0;
+                    if is_cell_darker {
+                        if is_rect_darker {
+                            Color::Indexed(244)
+                        } else {
+                            Color::Indexed(250)
+                        }
+                    } else {
+                        if is_rect_darker {
+                            Color::Indexed(246)
+                        } else {
+                            Color::Indexed(252)
+                        }
+                    }
+                };
+                cells.insert(
+                    col,
+                    Cell::from(Text::from("2").centered())
+                        .bg(bg_color)
+                        .fg(Color::Black),
+                );
+            }
+            rows.insert(row, Row::new(cells));
+        }
+        let widths = (0..9).map(|_| 3);
+        let table: Table = Table::new(rows, widths)
+            .column_spacing(0)
+            .bg(Color::Indexed(0))
+            .row_highlight_style(Style::new().fg(Color::Cyan))
+            .column_highlight_style(Style::new().fg(Color::Cyan))
+            .cell_highlight_style(Style::new().fg(Color::LightRed));
+        let current_cell = (0u8, 0u8);
+        let mut table_state = TableState::default();
+        table_state.select_cell(Some((0, 1)));
+        Self {
+            table,
+            current_cell,
+            table_state,
+            difficulty,
+        }
+    }
+
+    fn set_current(&mut self, row: u8, col: u8) {
+        self.current_cell = (row, col);
+        self.table_state
+            .select_cell(Some((row as usize, col as usize)));
+        self.table_state.select(Some(row as usize));
+        self.table_state.select_column(Some(col as usize));
+    }
+}
+
+fn main() -> io::Result<()> {
     let args = Args::parse();
 
     print!("Difficulty: {}\n", args.difficulty);
     print!("showElapsedTime: {}\n", args.showElapsedTime);
+
+    let mut terminal = ratatui::init();
+    terminal.clear()?;
 
     let app_result = run(terminal, args.difficulty, args.showElapsedTime);
     ratatui::restore();
@@ -38,21 +104,33 @@ fn main() -> io::Result<()> {
 }
 
 fn run(mut terminal: DefaultTerminal, difficulty: u8, showElapsedTime: bool) -> io::Result<()> {
+    let mut board: Board = Board::new(difficulty);
     loop {
         terminal.draw(|frame| {
-            let greetingText = Text::from(vec![
-                Line::from(vec![ format!("Difficulty: {}", difficulty).into() ]),
-                Line::from(vec![ format!("Show Elapsed Time: {}", showElapsedTime).yellow() ]),
-            ]);
-            let greeting = Paragraph::new(greetingText)
-                .white()
-                .on_blue();
-            frame.render_widget(greeting, frame.area());
+            frame.render_stateful_widget(board.table.clone(), frame.area(), &mut board.table_state);
         })?;
 
         if let event::Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                return Ok(());
+            if key.kind == KeyEventKind::Press {
+                if key.code == KeyCode::Char('q') {
+                    return Ok(());
+                } else if key.code == KeyCode::Right {
+                    board.set_current(board.current_cell.0, (board.current_cell.1 + 1) % 9);
+                } else if key.code == KeyCode::Left {
+                    if board.current_cell.1 == 0 {
+                        board.set_current(board.current_cell.0, 8);
+                    } else {
+                        board.set_current(board.current_cell.0, board.current_cell.1 - 1);
+                    }
+                } else if key.code == KeyCode::Up {
+                    if board.current_cell.0 == 0 {
+                        board.set_current(8, board.current_cell.1);
+                    } else {
+                        board.set_current(board.current_cell.0 - 1, board.current_cell.1);
+                    }
+                } else if key.code == KeyCode::Down {
+                    board.set_current((board.current_cell.0 + 1) % 9, board.current_cell.1);
+                }
             }
         }
     }
