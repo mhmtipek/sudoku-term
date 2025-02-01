@@ -23,15 +23,30 @@ struct Args {
     showElapsedTime: bool,
 }
 
-struct Board<'a> {
-    table: Table<'a>,
+struct Board {
+    rows: [[u8; 9]; 9],
     table_state: TableState,
     current_cell: (u8, u8),
     difficulty: u8,
 }
 
-impl<'a> Board<'a> {
+impl<'a> Board {
     fn new(difficulty: u8) -> Self {
+        let current_cell = (0u8, 0u8);
+        let mut table_state = TableState::default();
+        table_state.select_cell(Some((0, 0)));
+        table_state.select(Some(0));
+        table_state.select_column(Some(0));
+        let rows: [[u8; 9]; 9] = [[2; 9]; 9];
+        Self {
+            rows,
+            current_cell,
+            table_state,
+            difficulty,
+        }
+    }
+
+    fn create_table(&self) -> Table<'a> {
         let mut rows: Vec<Row> = Vec::with_capacity(9);
         for row in 0..9 {
             let mut cells: Vec<Cell> = Vec::with_capacity(9);
@@ -55,7 +70,7 @@ impl<'a> Board<'a> {
                 };
                 cells.insert(
                     col,
-                    Cell::from(Text::from("2").centered())
+                    Cell::from(Text::from(format!("{}", self.rows[row][col])).centered())
                         .bg(bg_color)
                         .fg(Color::Black),
                 );
@@ -63,21 +78,12 @@ impl<'a> Board<'a> {
             rows.insert(row, Row::new(cells));
         }
         let widths = (0..9).map(|_| 3);
-        let table: Table = Table::new(rows, widths)
+        Table::new(rows, widths)
             .column_spacing(0)
             .bg(Color::Indexed(0))
-            .row_highlight_style(Style::new().fg(Color::Cyan))
-            .column_highlight_style(Style::new().fg(Color::Cyan))
-            .cell_highlight_style(Style::new().fg(Color::LightRed));
-        let current_cell = (0u8, 0u8);
-        let mut table_state = TableState::default();
-        table_state.select_cell(Some((0, 1)));
-        Self {
-            table,
-            current_cell,
-            table_state,
-            difficulty,
-        }
+            .row_highlight_style(Style::new().fg(Color::Indexed(210)))
+            .column_highlight_style(Style::new().fg(Color::Indexed(210)))
+            .cell_highlight_style(Style::new().fg(Color::Indexed(120)))
     }
 
     fn set_current(&mut self, row: u8, col: u8) {
@@ -86,6 +92,10 @@ impl<'a> Board<'a> {
             .select_cell(Some((row as usize, col as usize)));
         self.table_state.select(Some(row as usize));
         self.table_state.select_column(Some(col as usize));
+    }
+
+    fn set_value(&mut self, val: u8) {
+        self.rows[self.current_cell.0 as usize][self.current_cell.1 as usize] = val;
     }
 }
 
@@ -107,7 +117,11 @@ fn run(mut terminal: DefaultTerminal, difficulty: u8, showElapsedTime: bool) -> 
     let mut board: Board = Board::new(difficulty);
     loop {
         terminal.draw(|frame| {
-            frame.render_stateful_widget(board.table.clone(), frame.area(), &mut board.table_state);
+            frame.render_stateful_widget(
+                board.create_table(),
+                frame.area(),
+                &mut board.table_state,
+            );
         })?;
 
         if let event::Event::Key(key) = event::read()? {
@@ -130,6 +144,8 @@ fn run(mut terminal: DefaultTerminal, difficulty: u8, showElapsedTime: bool) -> 
                     }
                 } else if key.code == KeyCode::Down {
                     board.set_current((board.current_cell.0 + 1) % 9, board.current_cell.1);
+                } else if key.code >= KeyCode::Char('0') && key.code <= KeyCode::Char('9') {
+                    board.set_value(key.code.to_string().parse().unwrap())
                 }
             }
         }
