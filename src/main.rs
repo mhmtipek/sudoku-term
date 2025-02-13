@@ -1,10 +1,14 @@
 #![allow(non_snake_case)]
 
-use std::io;
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 //use std::fmt;
 use clap::Parser;
 use ratatui::{
     crossterm::event::{self, KeyCode, KeyEventKind},
+    layout::Rect,
     style::{Color, Style, Stylize},
     text::Text,
     widgets::{Cell, Row, Table, TableState},
@@ -102,9 +106,6 @@ impl<'a> Board {
 fn main() -> io::Result<()> {
     let args = Args::parse();
 
-    print!("Difficulty: {}\n", args.difficulty);
-    print!("showElapsedTime: {}\n", args.showElapsedTime);
-
     let mut terminal = ratatui::init();
     terminal.clear()?;
 
@@ -115,39 +116,66 @@ fn main() -> io::Result<()> {
 
 fn run(mut terminal: DefaultTerminal, difficulty: u8, showElapsedTime: bool) -> io::Result<()> {
     let mut board: Board = Board::new(difficulty);
+    let start_time = Instant::now();
+
     loop {
         terminal.draw(|frame| {
-            frame.render_stateful_widget(
-                board.create_table(),
-                frame.area(),
-                &mut board.table_state,
+            let board_rect = Rect::new(
+                (frame.area().width as u16 - 27) / 2,
+                (frame.area().height as u16 - 9) / 2,
+                27,
+                9,
+            );
+            frame.render_stateful_widget(board.create_table(), board_rect, &mut board.table_state);
+            if showElapsedTime {
+                let time_label =
+                    Text::from(format!("{} secs", start_time.elapsed().as_secs())).right_aligned();
+                frame.render_widget(
+                    time_label,
+                    Rect::new(
+                        frame.area().width / 2,
+                        frame.area().height - 1,
+                        frame.area().width / 2,
+                        1,
+                    ),
+                );
+            }
+            let difficulty_label = Text::from(format!("{}", board.difficulty)).left_aligned();
+            frame.render_widget(
+                difficulty_label,
+                Rect::new(0, frame.area().height - 1, frame.area().width / 2, 1),
             );
         })?;
 
-        if let event::Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                if key.code == KeyCode::Char('q') {
-                    return Ok(());
-                } else if key.code == KeyCode::Right {
-                    board.set_current(board.current_cell.0, (board.current_cell.1 + 1) % 9);
-                } else if key.code == KeyCode::Left {
-                    if board.current_cell.1 == 0 {
-                        board.set_current(board.current_cell.0, 8);
-                    } else {
-                        board.set_current(board.current_cell.0, board.current_cell.1 - 1);
+        match event::poll(Duration::from_millis(200)) {
+            Ok(true) => {
+                if let event::Event::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Press {
+                        if key.code == KeyCode::Char('q') {
+                            return Ok(());
+                        } else if key.code == KeyCode::Right {
+                            board.set_current(board.current_cell.0, (board.current_cell.1 + 1) % 9);
+                        } else if key.code == KeyCode::Left {
+                            if board.current_cell.1 == 0 {
+                                board.set_current(board.current_cell.0, 8);
+                            } else {
+                                board.set_current(board.current_cell.0, board.current_cell.1 - 1);
+                            }
+                        } else if key.code == KeyCode::Up {
+                            if board.current_cell.0 == 0 {
+                                board.set_current(8, board.current_cell.1);
+                            } else {
+                                board.set_current(board.current_cell.0 - 1, board.current_cell.1);
+                            }
+                        } else if key.code == KeyCode::Down {
+                            board.set_current((board.current_cell.0 + 1) % 9, board.current_cell.1);
+                        } else if key.code >= KeyCode::Char('1') && key.code <= KeyCode::Char('9') {
+                            board.set_value(key.code.to_string().parse().unwrap())
+                        }
                     }
-                } else if key.code == KeyCode::Up {
-                    if board.current_cell.0 == 0 {
-                        board.set_current(8, board.current_cell.1);
-                    } else {
-                        board.set_current(board.current_cell.0 - 1, board.current_cell.1);
-                    }
-                } else if key.code == KeyCode::Down {
-                    board.set_current((board.current_cell.0 + 1) % 9, board.current_cell.1);
-                } else if key.code >= KeyCode::Char('0') && key.code <= KeyCode::Char('9') {
-                    board.set_value(key.code.to_string().parse().unwrap())
                 }
             }
+            _ => {}
         }
     }
 }
