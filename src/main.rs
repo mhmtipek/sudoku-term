@@ -14,6 +14,8 @@ use ratatui::{
 };
 use std::thread;
 
+pub mod sudoku;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum Difficulty {
     // Easy
@@ -81,9 +83,15 @@ impl<'a> Board {
                         }
                     }
                 };
+                let mut char = String::from(" ");
+                if self.rows[row][col] > 0 {
+                    char = format!("{}", self.rows[row][col]);
+                } else if row as u8 == self.current_cell.0 && col as u8 == self.current_cell.1 {
+                    char = String::from("_");
+                }
                 cells.insert(
                     col,
-                    Cell::from(Text::from(format!("{}", self.rows[row][col])).centered())
+                    Cell::from(Text::from(char).centered())
                         .bg(bg_color)
                         .fg(Color::Black),
                 );
@@ -112,15 +120,6 @@ impl<'a> Board {
     }
 }
 
-fn generate_initial_board(difficulty: Difficulty) -> [[u8; 9]; 9] {
-    // Assign initial values. Maybe create available_values function
-    // Solve board. Create solve function.
-    // Remove cells until desired difficulty is reached.
-    thread::sleep(Duration::from_millis(3000));
-    let mut board: [[u8; 9]; 9] = [[3; 9]; 9];
-    board
-}
-
 fn main() -> io::Result<()> {
     let args = Args::parse();
 
@@ -140,7 +139,7 @@ fn run(
     let mut board: Board = Board::new(difficulty);
 
     // Start the thread which creates the initial board here.
-    let init_thread_handle = thread::spawn(move || generate_initial_board(difficulty));
+    let init_thread_handle = thread::spawn(move || sudoku::sudoku::generate_initial_board(20));
 
     // The loop until initial board is created
     let mut counter = 0;
@@ -178,8 +177,17 @@ fn run(
             );
             frame.render_stateful_widget(board.create_table(), board_rect, &mut board.table_state);
             if show_elapsed_time {
-                let time_label =
-                    Text::from(format!("{} secs", start_time.elapsed().as_secs())).right_aligned();
+                let secs = start_time.elapsed().as_secs();
+                let mut time_label = Text::from(format!("{} secs", secs)).right_aligned();
+                if secs >= 60 {
+                    if secs >= 120 {
+                        time_label = Text::from(format!("{} mins {} secs", secs / 60, secs % 60))
+                            .right_aligned();
+                    } else {
+                        time_label =
+                            Text::from(format!("1 min {} secs", secs % 60)).right_aligned();
+                    }
+                }
                 frame.render_widget(
                     time_label,
                     Rect::new(
