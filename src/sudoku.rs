@@ -217,6 +217,39 @@ pub mod sudoku {
         solutions
     }
 
+    fn adjust_difficulty(solved_board: &[[u8; 9]; 9], difficulty: u8) -> (u8, [[u8; 9]; 9]) {
+        let mut board = solved_board.clone();
+        let mut current_difficulty: u8 = 0; // 0: easiest, 255: hardest
+
+        // Remove random cell and verify board has still one solution until desired difficulty is reached
+        let mut rng = rand::rng();
+        let mut all_indexes: Vec<u8> = (0..81).collect();
+        let mut current_index = 0;
+        all_indexes.shuffle(&mut rng);
+        while current_difficulty < difficulty {
+            if current_index >= all_indexes.len() {
+                break;
+            }
+            let row: u8 = all_indexes[current_index] / 9;
+            let col: u8 = all_indexes[current_index] % 9;
+
+            let val: u8 = board[row as usize][col as usize];
+            board[row as usize][col as usize] = 0; // Remove data from cell
+            let solutions = all_solutions(&board);
+            if solutions.len() > 1 {
+                // Revert removal
+                board[row as usize][col as usize] = val;
+            } else {
+                // Since we're working on solved board, solution count should be at least one.
+                // Else case assumes solution count is one.
+                current_difficulty = current_difficulty + 3;
+            }
+            current_index = current_index + 1;
+        }
+
+        (current_difficulty, board)
+    }
+
     // TODO: write unit test
     // difficulty is in between 0-255
     pub fn generate_initial_board(difficulty: u8) -> [[u8; 9]; 9] {
@@ -250,30 +283,30 @@ pub mod sudoku {
             try_count = try_count + 1;
         }
 
-        *solutions.first().unwrap()
+        let mut join_handles: Vec<thread::JoinHandle<(u8, [[u8; 9]; 9])>> = Vec::new();
+        for solved_board in solutions {
+            join_handles.push(thread::spawn(move || {
+                adjust_difficulty(&solved_board, difficulty)
+            }));
+        }
 
-        //
-        // let mut join_handles: Vec<thread::JoinHandle<[[u8; 9]; 9]>> = Vec::new();
-        // for solved_board in solutions {
-        //     join_handles.push(thread::spawn(move || {
-        //         adjust_difficulty(solved_board, difficulty)
-        //     }));
-        // }
+        let mut game_board: [[u8; 9]; 9] = [[0; 9]; 9];
+        let mut best_match_score = 255;
+        for handle in join_handles {
+            match handle.join() {
+                Ok((difficulty_score, board)) => {
+                    let score = difficulty_score.abs_diff(difficulty);
+                    if score < best_match_score {
+                        best_match_score = score;
+                        game_board = board.clone();
+                    }
+                }
+                Err(_) => {
+                    eprintln!("Thread failed");
+                }
+            }
+        }
 
-        // let mut game_boards: Vec<[[u8; 9]; 9]> = Vec::new();
-        // for handle in join_handles {
-        //     match handle.join() {
-        //         Ok(board) => {
-        //             game_boards.push(board);
-        //         }
-        //         Err(_) => {
-        //             eprintln!("Thread failed");
-        //         }
-        //     }
-        // }
-
-        // std::thread::sleep(Duration::from_millis(3000));
-
-        // board
+        game_board
     }
 }
