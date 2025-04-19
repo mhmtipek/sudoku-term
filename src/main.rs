@@ -24,6 +24,8 @@ enum Difficulty {
     Medium,
     // Hard
     Hard,
+    // Extreme
+    Extreme,
 }
 
 #[derive(Parser, Debug)]
@@ -73,13 +75,13 @@ impl<'a> Board {
                         if is_rect_darker {
                             Color::Indexed(244)
                         } else {
-                            Color::Indexed(250)
+                            Color::Indexed(248)
                         }
                     } else {
                         if is_rect_darker {
                             Color::Indexed(246)
                         } else {
-                            Color::Indexed(252)
+                            Color::Indexed(250)
                         }
                     }
                 };
@@ -98,13 +100,13 @@ impl<'a> Board {
             }
             rows.insert(row, Row::new(cells));
         }
-        let widths = (0..9).map(|_| 3);
+        let widths = [3; 9];
         Table::new(rows, widths)
             .column_spacing(0)
             .bg(Color::Indexed(0))
             .row_highlight_style(Style::new().fg(Color::Indexed(230)))
             .column_highlight_style(Style::new().fg(Color::Indexed(230)))
-            .cell_highlight_style(Style::new().fg(Color::Indexed(120)))
+            .cell_highlight_style(Style::new().fg(Color::Indexed(123)))
     }
 
     fn set_current(&mut self, row: u8, col: u8) {
@@ -138,8 +140,16 @@ fn run(
 ) -> io::Result<()> {
     let mut board: Board = Board::new(difficulty);
 
+    let difficulty_val = match difficulty {
+        Difficulty::Easy => 100,
+        Difficulty::Medium => 140,
+        Difficulty::Hard => 160,
+        Difficulty::Extreme => 180,
+    };
+
     // Start the thread which creates the initial board here.
-    let init_thread_handle = thread::spawn(move || sudoku::sudoku::generate_initial_board(20));
+    let init_thread_handle =
+        thread::spawn(move || sudoku::sudoku::generate_initial_board(difficulty_val));
 
     // The loop until initial board is created
     let mut counter = 0;
