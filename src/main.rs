@@ -7,9 +7,9 @@ use clap::{Parser, ValueEnum};
 use ratatui::{
     crossterm::event::{self, KeyCode, KeyEventKind},
     layout::Rect,
-    style::{Color, Style, Stylize},
+    style::{Color, Stylize},
     text::Text,
-    widgets::{Cell, Row, Table, TableState},
+    widgets::{Cell, Row, Table},
     DefaultTerminal,
 };
 use std::thread;
@@ -24,8 +24,6 @@ enum Difficulty {
     Medium,
     // Hard
     Hard,
-    // Extreme
-    Extreme,
 }
 
 #[derive(Parser, Debug)]
@@ -35,14 +33,21 @@ struct Args {
     #[arg(value_enum, default_value_t = Difficulty::Medium)]
     difficulty: Difficulty,
 
-    /// Show elapsed time
-    #[arg(short, long, default_value_t = true)]
-    show_elapsed_time: bool,
+    /// Hide elapsed time
+    #[arg(long, default_value_t = false)]
+    hide_elapsed_time: bool,
+}
+
+#[derive(Copy, Clone)]
+struct CellData {
+    editable: bool,
+    conflict: bool,
+    highlight: bool,
 }
 
 struct Board {
     rows: [[u8; 9]; 9],
-    table_state: TableState,
+    cell_data: [[CellData; 9]; 9],
     current_cell: (u8, u8),
     difficulty: Difficulty,
 }
@@ -50,75 +55,134 @@ struct Board {
 impl<'a> Board {
     fn new(difficulty: Difficulty) -> Self {
         let current_cell = (0u8, 0u8);
-        let mut table_state = TableState::default();
-        table_state.select_cell(Some((0, 0)));
-        table_state.select(Some(0));
-        table_state.select_column(Some(0));
         let rows: [[u8; 9]; 9] = [[2; 9]; 9];
+        let cell_data: [[CellData; 9]; 9] = [([CellData {
+            conflict: false,
+            editable: false,
+            highlight: false,
+        }; 9]); 9];
         Self {
             rows,
+            cell_data,
             current_cell,
-            table_state,
             difficulty,
         }
     }
 
     fn create_table(&self) -> Table<'a> {
         let mut rows: Vec<Row> = Vec::with_capacity(9);
+        let finished = sudoku::sudoku::is_finished(&self.rows);
         for row in 0..9 {
             let mut cells: Vec<Cell> = Vec::with_capacity(9);
             for col in 0..9 {
                 let bg_color = {
-                    let is_cell_darker = (row % 2) ^ (col % 2) == 0;
-                    let is_rect_darker = ((row / 3) % 2) ^ ((col / 3) % 2) == 0;
-                    if is_cell_darker {
-                        if is_rect_darker {
-                            Color::Indexed(244)
-                        } else {
-                            Color::Indexed(248)
-                        }
+                    if row == self.current_cell.0 && col == self.current_cell.1 {
+                        Color::Indexed(180)
+                    } else if self.cell_data[row as usize][col as usize].conflict {
+                        Color::Indexed(162)
                     } else {
-                        if is_rect_darker {
-                            Color::Indexed(246)
+                        let is_cell_darker = (row % 2) ^ (col % 2) == 0;
+                        let is_rect_darker = ((row / 3) % 2) ^ ((col / 3) % 2) == 0;
+                        if is_cell_darker {
+                            if is_rect_darker {
+                                if self.current_cell.0 == row || self.current_cell.1 == col {
+                                    Color::Indexed(241)
+                                } else {
+                                    Color::Indexed(240)
+                                }
+                            } else {
+                                if self.current_cell.0 == row || self.current_cell.1 == col {
+                                    Color::Indexed(245)
+                                } else {
+                                    Color::Indexed(244)
+                                }
+                            }
                         } else {
-                            Color::Indexed(250)
+                            if is_rect_darker {
+                                if self.current_cell.0 == row || self.current_cell.1 == col {
+                                    Color::Indexed(243)
+                                } else {
+                                    Color::Indexed(242)
+                                }
+                            } else {
+                                if self.current_cell.0 == row || self.current_cell.1 == col {
+                                    Color::Indexed(247)
+                                } else {
+                                    Color::Indexed(246)
+                                }
+                            }
                         }
                     }
                 };
+                let fg_color = {
+                    if finished {
+                        Color::Indexed(155)
+                    } else if row == self.current_cell.0 && col == self.current_cell.1 {
+                        if self.cell_data[row as usize][col as usize].editable {
+                            Color::Indexed(123)
+                        } else {
+                            Color::Black
+                        }
+                    } else if self.cell_data[row as usize][col as usize].highlight {
+                        Color::Indexed(230)
+                    } else {
+                        Color::Black
+                    }
+                };
                 let mut char = String::from(" ");
-                if self.rows[row][col] > 0 {
-                    char = format!("{}", self.rows[row][col]);
+                if self.rows[row as usize][col as usize] > 0 {
+                    char = format!("{}", self.rows[row as usize][col as usize]);
                 } else if row as u8 == self.current_cell.0 && col as u8 == self.current_cell.1 {
                     char = String::from("_");
                 }
                 cells.insert(
-                    col,
+                    col as usize,
                     Cell::from(Text::from(char).centered())
                         .bg(bg_color)
-                        .fg(Color::Black),
+                        .fg(fg_color),
                 );
             }
-            rows.insert(row, Row::new(cells));
+            rows.insert(row as usize, Row::new(cells));
         }
         let widths = [3; 9];
         Table::new(rows, widths)
             .column_spacing(0)
             .bg(Color::Indexed(0))
-            .row_highlight_style(Style::new().fg(Color::Indexed(230)))
-            .column_highlight_style(Style::new().fg(Color::Indexed(230)))
-            .cell_highlight_style(Style::new().fg(Color::Indexed(123)))
     }
 
     fn set_current(&mut self, row: u8, col: u8) {
         self.current_cell = (row, col);
-        self.table_state
-            .select_cell(Some((row as usize, col as usize)));
-        self.table_state.select(Some(row as usize));
-        self.table_state.select_column(Some(col as usize));
+        self.update_cell_data();
+    }
+
+    fn update_cell_data(&mut self) {
+        for row in 0..9 {
+            for col in 0..9 {
+                self.cell_data[row as usize][col as usize].conflict =
+                    !sudoku::sudoku::is_valid(&self.rows, row, col);
+                self.cell_data[row as usize][col as usize].highlight = sudoku::sudoku::are_related(
+                    (self.current_cell.0, self.current_cell.1),
+                    (row, col),
+                );
+            }
+        }
     }
 
     fn set_value(&mut self, val: u8) {
         self.rows[self.current_cell.0 as usize][self.current_cell.1 as usize] = val;
+        self.update_cell_data();
+    }
+
+    fn set_initial_rows(&mut self, rows: [[u8; 9]; 9]) {
+        self.rows = rows;
+
+        // Init cell data
+        for row in 0..9 {
+            for col in 0..9 {
+                self.cell_data[row][col].editable = self.rows[row][col] == 0;
+            }
+        }
+        self.update_cell_data();
     }
 }
 
@@ -128,7 +192,7 @@ fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
     terminal.clear()?;
 
-    let app_result = run(terminal, args.difficulty, args.show_elapsed_time);
+    let app_result = run(terminal, args.difficulty, args.hide_elapsed_time);
     ratatui::restore();
     app_result
 }
@@ -136,7 +200,7 @@ fn main() -> io::Result<()> {
 fn run(
     mut terminal: DefaultTerminal,
     difficulty: Difficulty,
-    show_elapsed_time: bool,
+    hide_elapsed_time: bool,
 ) -> io::Result<()> {
     let mut board: Board = Board::new(difficulty);
 
@@ -144,7 +208,6 @@ fn run(
         Difficulty::Easy => 100,
         Difficulty::Medium => 140,
         Difficulty::Hard => 160,
-        Difficulty::Extreme => 180,
     };
 
     // Start the thread which creates the initial board here.
@@ -153,6 +216,7 @@ fn run(
 
     // The loop until initial board is created
     let mut counter = 0;
+    let board_generation_start_time = Instant::now();
     loop {
         if init_thread_handle.is_finished() {
             break;
@@ -168,15 +232,24 @@ fn run(
                 Text::from(print_text).centered(),
                 Rect::new(0, frame.area().height / 2, frame.area().width, 1),
             );
+            if board_generation_start_time.elapsed() > Duration::from_secs(10) {
+                frame.render_widget(
+                    Text::from("It may take time depending on difficulty").centered(),
+                    Rect::new(0, frame.area().height - 3, frame.area().width, 1),
+                );
+            }
         })?;
 
         thread::sleep(Duration::from_millis(100));
         counter = counter + 1;
     }
-    board.rows = init_thread_handle.join().unwrap();
+    board.set_initial_rows(init_thread_handle.join().unwrap());
 
     // The game loop
     let start_time = Instant::now();
+    let mut finish_time = start_time;
+    let mut finished = false;
+    let mut undo_data: Option<(u8, u8, u8)> = Option::None; // row, col, val
     loop {
         terminal.draw(|frame| {
             let board_rect = Rect::new(
@@ -185,9 +258,15 @@ fn run(
                 27,
                 9,
             );
-            frame.render_stateful_widget(board.create_table(), board_rect, &mut board.table_state);
-            if show_elapsed_time {
-                let secs = start_time.elapsed().as_secs();
+            frame.render_widget(board.create_table(), board_rect);
+            if !hide_elapsed_time {
+                let secs = {
+                    if start_time == finish_time {
+                        start_time.elapsed().as_secs()
+                    } else {
+                        finish_time.duration_since(start_time).as_secs()
+                    }
+                };
                 let mut time_label = Text::from(format!("{} secs", secs)).right_aligned();
                 if secs >= 60 {
                     if secs >= 120 {
@@ -213,6 +292,10 @@ fn run(
                 difficulty_label,
                 Rect::new(0, frame.area().height - 1, frame.area().width / 2, 1),
             );
+            frame.render_widget(
+                Text::from("d: delete, u: undo, q: quit").centered(),
+                Rect::new(0, frame.area().height - 1, frame.area().width, 1),
+            );
         })?;
 
         match event::poll(Duration::from_millis(200)) {
@@ -221,6 +304,24 @@ fn run(
                     if key.kind == KeyEventKind::Press {
                         if key.code == KeyCode::Char('q') {
                             return Ok(());
+                        } else if finished {
+                            continue;
+                        } else if key.code == KeyCode::Char('u') {
+                            match undo_data {
+                                Some(data) => {
+                                    board.set_current(data.0, data.1);
+                                    board.set_value(data.2);
+                                }
+                                None => {}
+                            }
+                            undo_data = Option::None;
+                        } else if key.code == KeyCode::Char('d') {
+                            if board.cell_data[board.current_cell.0 as usize]
+                                [board.current_cell.1 as usize]
+                                .editable
+                            {
+                                board.set_value(0);
+                            }
                         } else if key.code == KeyCode::Right {
                             board.set_current(board.current_cell.0, (board.current_cell.1 + 1) % 9);
                         } else if key.code == KeyCode::Left {
@@ -238,7 +339,22 @@ fn run(
                         } else if key.code == KeyCode::Down {
                             board.set_current((board.current_cell.0 + 1) % 9, board.current_cell.1);
                         } else if key.code >= KeyCode::Char('1') && key.code <= KeyCode::Char('9') {
-                            board.set_value(key.code.to_string().parse().unwrap())
+                            if board.cell_data[board.current_cell.0 as usize]
+                                [board.current_cell.1 as usize]
+                                .editable
+                            {
+                                undo_data = Some((
+                                    board.current_cell.0,
+                                    board.current_cell.1,
+                                    board.rows[board.current_cell.0 as usize]
+                                        [board.current_cell.1 as usize],
+                                ));
+                                board.set_value(key.code.to_string().parse().unwrap());
+                                finished = sudoku::sudoku::is_finished(&board.rows);
+                                if finished {
+                                    finish_time = Instant::now();
+                                }
+                            }
                         }
                     }
                 }
