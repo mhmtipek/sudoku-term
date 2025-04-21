@@ -56,9 +56,34 @@ pub mod sudoku {
         values.into_iter().collect()
     }
 
+    // Checks whether index 1 and index 2 are either;
+    // in same row
+    // in same col
+    // in same rect
+    pub fn are_related(index1: (u8, u8), index2: (u8, u8)) -> bool {
+        // Check same row
+        if index1.0 == index2.0 {
+            return true;
+        }
+        // Check same col
+        if index1.1 == index2.1 {
+            return true;
+        }
+        // Check same rect
+        if index1.0 / 3 == index2.0 / 3 && index1.1 / 3 == index2.1 / 3 {
+            return true;
+        }
+
+        false
+    }
+
     // TODO: write unit test
     pub fn is_valid(board: &[[u8; 9]; 9], row: u8, col: u8) -> bool {
         let value = board[row as usize][col as usize];
+
+        if value == 0 {
+            return true;
+        }
 
         // Check same col
         for row_i in 0..9 {
@@ -83,6 +108,9 @@ pub mod sudoku {
         // Check same rect
         for row_i in ((row / 3) * 3)..((row / 3) * 3 + 3) {
             for col_i in ((col / 3) * 3)..((col / 3) * 3 + 3) {
+                if row_i == row && col_i == col {
+                    continue;
+                }
                 if board[row_i as usize][col_i as usize] == value {
                     return false;
                 }
@@ -96,6 +124,9 @@ pub mod sudoku {
     pub fn is_finished(board: &[[u8; 9]; 9]) -> bool {
         for row in 0..9 {
             for col in 0..9 {
+                if board[row as usize][col as usize] == 0 {
+                    return false;
+                }
                 if !is_valid(board, row, col) {
                     return false;
                 }
