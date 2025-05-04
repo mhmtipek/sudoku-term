@@ -18,7 +18,12 @@ Options:
 
 ```
 
+Installation:
+
+- Arch Linux ([AUR](https://aur.archlinux.org/packages/sudoku-term)): `paru -S sudoku-term`
+
 Thanks to projects :heart::
+
 - [ratatui](https://github.com/ratatui/ratatui)
 - [clap](https://github.com/clap-rs/clap)
 - [crossterm](https://github.com/crossterm-rs/crossterm)
